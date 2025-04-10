@@ -9,6 +9,12 @@ import { motion } from 'framer-motion';
 const Dashboard = () => {
   const { userName } = useAuth();
   const [todayCycles, setTodayCycles] = useState(0);
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
+  
+    const handleCycleComplete = (cycles, trigger) => {
+      setRefreshTrigger(prev => prev + 1);
+      console.log('Cycle completed, total cycles:', cycles);
+    };
 
   return (
     <Box sx={{
@@ -20,10 +26,10 @@ const Dashboard = () => {
         </Typography>
         <Grid container spacing={3}>
           <Grid item xs={12} md={12}>
-            <PomodoroTimer onCycleComplete={setTodayCycles} />
+            <PomodoroTimer onCycleComplete={handleCycleComplete} />
           </Grid>
           <Grid item xs={12} md={12}>
-            <DailyGraph days={30} />
+            <DailyGraph days={30} refreshTrigger={refreshTrigger}  />
           </Grid>
         </Grid>
       </motion.div>

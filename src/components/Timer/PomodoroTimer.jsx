@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { Box, Typography, Card, Alert, ButtonGroup, Button, FormControl, Select, MenuItem } from '@mui/material';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { Box, Typography, Card, Alert, FormControl, Select, MenuItem, Grid, useTheme, useMediaQuery, InputLabel } from '@mui/material';
 import { motion } from 'framer-motion';
 import CircularProgress from './CircularProgress';
 import TimerControls from './TimerControls';
@@ -16,12 +16,15 @@ const PomodoroTimer = ({ onCycleComplete }) => {
   const [isBreak, setIsBreak] = useState(false);
   const [cycles, setCycles] = useState(0);
   const [alert, setAlert] = useState(null);
+  const [graphRefreshTrigger, setGraphRefreshTrigger] = useState(0);
   const timerRef = useRef(null);
   const audioRef = useRef(new Audio('/notification.mp3'));
-  const isMounted = useRef(false); // Flag to track if component is mounted
+  const isMounted = useRef(false);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   useEffect(() => {
-    let mounted = true; // Local mounted flag for cleanup
+    let mounted = true;
     const loadSettingsAndStats = async () => {
       if (!currentUser || !mounted) return;
 
@@ -53,7 +56,43 @@ const PomodoroTimer = ({ onCycleComplete }) => {
     return () => {
       mounted = false;
     };
-  }, [currentUser]); // Only re-run when currentUser changes
+  }, [currentUser]);
+
+  const saveCycle = useCallback(async (cycleCount) => {
+    if (!currentUser) return;
+    const today = new Date().toISOString().split('T')[0];
+    const statsRef = doc(db, 'users', currentUser.uid, 'stats', today);
+    
+    try {
+      const statsDoc = await getDoc(statsRef);
+      const currentCycles = statsDoc.exists() ? statsDoc.data().cycles || 0 : 0;
+      const newCycles = currentCycles + 1;
+
+      if (statsDoc.exists()) {
+        await updateDoc(statsRef, {
+          cycles: newCycles,
+          lastUpdated: new Date(),
+        });
+      } else {
+        await setDoc(statsRef, {
+          date: today,
+          cycles: newCycles,
+          workDuration: workDuration / 60,
+          breakDuration: breakDuration / 60,
+          createdAt: new Date(),
+          lastUpdated: new Date(),
+        });
+      }
+      
+      if (isMounted.current) {
+        setCycles(newCycles);
+        // Trigger graph refresh
+        setGraphRefreshTrigger(prev => prev + 1);
+      }
+    } catch (error) {
+      console.error('Error saving cycle:', error);
+    }
+  }, [currentUser, workDuration, breakDuration]);
 
   useEffect(() => {
     if (isRunning) {
@@ -66,7 +105,7 @@ const PomodoroTimer = ({ onCycleComplete }) => {
                 const newCycles = prev + 1;
                 saveCycle(newCycles);
                 if (onCycleComplete && typeof onCycleComplete === 'function') {
-                  onCycleComplete(newCycles); // Call parent callback safely
+                  onCycleComplete(newCycles, graphRefreshTrigger);
                 }
                 return newCycles;
               });
@@ -84,33 +123,7 @@ const PomodoroTimer = ({ onCycleComplete }) => {
       }, 1000);
     }
     return () => clearInterval(timerRef.current);
-  }, [isRunning, isBreak, workDuration, breakDuration, onCycleComplete]);
-
-  const saveCycle = async (cycleCount) => {
-    if (!currentUser) return;
-    const today = new Date().toISOString().split('T')[0];
-    const statsRef = doc(db, 'users', currentUser.uid, 'stats', today);
-    const statsDoc = await getDoc(statsRef);
-    const currentCycles = statsDoc.exists() ? statsDoc.data().cycles || 0 : 0;
-    const newCycles = currentCycles + 1; // Increment the existing cycles
-
-    if (statsDoc.exists()) {
-      await updateDoc(statsRef, {
-        cycles: newCycles,
-        lastUpdated: new Date(),
-      });
-    } else {
-      await setDoc(statsRef, {
-        date: today,
-        cycles: newCycles,
-        workDuration: workDuration / 60,
-        breakDuration: breakDuration / 60,
-        createdAt: new Date(),
-        lastUpdated: new Date(),
-      });
-    }
-    if (isMounted.current) setCycles(newCycles); // Update state only if mounted
-  };
+  }, [isRunning, isBreak, workDuration, breakDuration, onCycleComplete, saveCycle, graphRefreshTrigger]);
 
   const startTimer = () => {
     setIsRunning(true);
@@ -162,7 +175,6 @@ const PomodoroTimer = ({ onCycleComplete }) => {
     }
   };
 
-  // Set mounted flag after initial render
   useEffect(() => {
     isMounted.current = true;
     return () => {
@@ -171,41 +183,60 @@ const PomodoroTimer = ({ onCycleComplete }) => {
   }, []);
 
   return (
-    <Card sx={{ p: 3, borderRadius: 3, mb: 4 }}>
+    <Card sx={{ p: isMobile ? 2 : 3, borderRadius: 3, mb: 4 }}>
       <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} transition={{ duration: 0.3 }}>
-        <Typography variant="h4" align="center" gutterBottom>
+        <Typography variant={isMobile ? "h5" : "h4"} align="center" gutterBottom>
           Pomodoro Technique
         </Typography>
+        
         {alert && (
           <Alert severity={alert.type} sx={{ mb: 2 }} onClose={() => setAlert(null)}>
             {alert.message}
           </Alert>
         )}
-        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mb: 2 }}>
-          <FormControl sx={{ minWidth: 120 }}>
-            <Select
-              value={workDuration}
-              onChange={(e) => setCustomWorkTime(e.target.value)}
-              disabled={isRunning}
-            >
-              <MenuItem value={25 * 60}>25 min</MenuItem>
-              <MenuItem value={30 * 60}>30 min</MenuItem>
-              <MenuItem value={60 * 60}>1 hr</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl sx={{ minWidth: 120 }}>
-            <Select
-              value={breakDuration}
-              onChange={(e) => setCustomBreakTime(e.target.value)}
-              disabled={isRunning}
-            >
-              <MenuItem value={5 * 60}>5 min</MenuItem>
-              <MenuItem value={10 * 60}>10 min</MenuItem>
-              <MenuItem value={15 * 60}>15 min</MenuItem>
-            </Select>
-          </FormControl>
-        </Box>
-        <CircularProgress timeLeft={timeLeft} totalTime={isBreak ? breakDuration : workDuration} isBreak={isBreak} />
+        
+        <Grid container spacing={2} sx={{ mb: 2 }}>
+          <Grid item xs={6}>
+            <FormControl fullWidth size={isMobile ? "small" : "medium"}>
+              <InputLabel id="work-duration-label">Work</InputLabel>
+              <Select
+                labelId="work-duration-label"
+                value={workDuration}
+                label="Work"
+                onChange={(e) => setCustomWorkTime(e.target.value)}
+                disabled={isRunning}
+              >
+                <MenuItem value={ 1* 6}>25 min</MenuItem>
+                <MenuItem value={30 * 60}>30 min</MenuItem>
+                <MenuItem value={60 * 60}>1 hr</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          
+          <Grid item xs={6}>
+            <FormControl fullWidth size={isMobile ? "small" : "medium"}>
+              <InputLabel id="break-duration-label">Break</InputLabel>
+              <Select
+                labelId="break-duration-label"
+                value={breakDuration}
+                label="Break"
+                onChange={(e) => setCustomBreakTime(e.target.value)}
+                disabled={isRunning}
+              >
+                <MenuItem value={5 * 60}>5 min</MenuItem>
+                <MenuItem value={10 * 60}>10 min</MenuItem>
+                <MenuItem value={15 * 60}>15 min</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+        
+        <CircularProgress 
+          timeLeft={timeLeft} 
+          totalTime={isBreak ? breakDuration : workDuration} 
+          isBreak={isBreak} 
+        />
+        
         <TimerControls
           isRunning={isRunning}
           isBreak={isBreak}

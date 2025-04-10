@@ -7,14 +7,18 @@ const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async (email, password) => {
+    setLoading(true);
     try {
       await login(email, password);
       navigate('/dashboard');
-      setError('');
     } catch (err) {
       setError('Failed to log in. Check your credentials.');
+      throw new Error('Invalid email or password'); // Throw error to trigger form error state
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -26,6 +30,7 @@ const Login = () => {
       alternateText="Don't have an account?"
       onAlternateClick={() => navigate('/signup')}
       error={error}
+      isLogin={true}
     />
   );
 };
