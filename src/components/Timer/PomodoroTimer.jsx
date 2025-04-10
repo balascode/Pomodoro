@@ -206,7 +206,7 @@ const PomodoroTimer = ({ onCycleComplete }) => {
                 onChange={(e) => setCustomWorkTime(e.target.value)}
                 disabled={isRunning}
               >
-                <MenuItem value={ 1* 6}>25 min</MenuItem>
+                <MenuItem value={25 * 60}>25 min</MenuItem>
                 <MenuItem value={30 * 60}>30 min</MenuItem>
                 <MenuItem value={60 * 60}>1 hr</MenuItem>
               </Select>
